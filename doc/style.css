@@ -1,0 +1,26 @@
+html{
+  background-color: navajowhite;
+  color: #222;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 16px;
+  padding-left: 15%;
+  padding-right: 15%;
+}
+
+code{
+  font-size: 16px;
+}
+
+pre{
+  white-space: pre-wrap;
+  padding-left: 14px;
+  padding-right: 14px;
+  background-color: white;
+  color: black;
+}
+
+.new{
+  background-color: lavender;
+  color: green;
+  font-weight: bold;
+}

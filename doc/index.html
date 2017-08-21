@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Document</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div>
+
+<h1>SOLID OpenGL uniform handling in Rust</h1>
+
+Any OpenGL shader program has uniforms, and they need to be set through the OpenGL API in our program.
+Instead of making hardcoded API calls which are indirectly tightly coupled to our shader program,
+it would be nice if we could build a high level abstraction that is reusable for any shader program.
+This article describes an OO approach to achieve this with Rust. We begin by defining a struct that contains the handle to the uniform in the shader program.
+
+<pre>
+<code>
+struct Uniform{
+  handle: i32
+}
+</code>
+</pre>
+
+Uniforms correspond to data types in the shader program, which can be of any type (eg. float, mat4 etc). So the struct need to be generic:
+
+<pre>
+<code>
+struct Uniform&lt;T&gt;{
+  handle: i32
+  value: T
+}
+</code>
+</pre>
+
+Instances will need to be able to send their data to OpenGL, and the API call depends on the type. So we need to write implementations for the types that work with OpenGL.
+
+<pre>
+<code>
+struct Uniform&lt;T&gt;{
+  handle: i32
+  value: T
+}
+
+impl Uniform&lt;GLfloat&gt;{
+  fn send_to_opengl(&self){
+    gl::Uniform1f(self.handle, self.value);
+  }
+}
+
+impl Uniform&lt;Matrix4&lt;GLfloat&gt;&gt;{
+  fn send_to_opengl(&self){
+    gl::glUniformMatrix4fv(self.handle, self.value);
+  }
+}
+
+...
+</code>
+</pre>
+
+Uniforms can depend on other uniforms.
+This would for example be the case with a shader program that contains a uniform for the projection matrix, and a uniform for the product of the projection matrix and the view matrix. The latter depends on the former.
+Instead of having to constantly keep track of them separately everywhere in our software, it would be nice if we can simply setup the dependency at the start of the application and never have to worry about it again.
+So when a of a uniform is set, another uniform that depends on it must recalculate its value.
+To clarify; if A depends on B, A must be notified when B is set.
+This means B must have a setter method that triggers the calculation of A.
+Let's first add the setter method:
+
+<pre>
+<code>
+struct Uniform&lt;T&gt;{
+  handle: i32,
+  value: T
+}
+
+impl &lt;T&gt; Uniform&lt;T{
+  pub fn set(&mut self, new_val: T){
+    self.value = new_val;
+    // todo: all depending uniforms must be notified
+  }
+}
+
+...
+</code>
+</pre>
+
+After the value is set, all depending uniforms need to be notified. This is the observer pattern.
+The Uniform needs a Vec of observers, which at first attempt we may naively write as follows:
+
+<pre>
+<code>
+observers: Vec&lt;Uniform&lt;T&gt;&gt;
+</code>
+</pre>
+
+However, this would only work if the observers are of the same uniform type as the observable, which is certainly not always the case. To circumvent this, we define a non-generic trait that we will implement for the Uniform.
+
+<pre>
+<code>
+pub trait Observer{
+  fn notify(&self);
+}
+
+impl Observer for Uniform&lt;T&gt;{
+  fn notify(&self){
+    // todo: calculate the new uniform value
+  }
+}
+</code>
+</pre>
+
+We will worry about the implementation later. Now we can write:
+
+<pre>
+<code>
+  observers: Vec&lt;Observer&gt;
+</code>
+</pre>
+
+Sadly, this still would not work because the Vector would take ownership of the Observers, while we need them for other things. They may for example be observers in other uniforms as well, not to mention they need to be available to our application for uniform setting.
+It seems like we need multiple ownership, which we can achieve using the <code>Rc</code> wrapper. We thus arrive at:
+
+<pre>
+<code>
+  observers: Vec&lt;Rc&lt;Observer&gt;&gt;
+</code>
+</pre>
+
+That looks good! This means we are going to put the uniforms instances inside <code>Rc</code> wrappers, and whenever something needs ownership of it, we can just call the <code>clone</code> method. Great!
+<br>
+<br>
+Now let's get back to the implementation of Observer. How are we going to implement the notify function without knowing how the uniforms are related? The function could be anything.
+This means we need to inject this behavior. One way to do this is by setting the function as a property in the struct.
+We do this by using a <code>Box</code> that wraps a function that returns something that can be set in the value.
+
+<pre>
+<code>
+struct Uniform&lt;T&gt;{
+  handle: i32,
+  value: T,
+  observers: Vec&lt;Rc&lt;Observer&gt;&gt;,
+  calculation: Box&lt;Fn() -> T&gt;
+}
+</code>
+</pre>
+
+We would then write:
+
+<pre>
+<code>
+impl Observer for Uniform&lt;T&gt;{
+  fn notify(&mut self){
+    let new_value = (self.calculation)();
+    self.value = new_value;
+  }
+}
+</code>
+</pre>
+
+Note that the reference to self must be mutable. Now in the set method, we can notify the observers:
+
+<pre>
+<code>
+impl &lt;T&gt; Uniform&lt;T{
+  pub fn set(&mut self, new_val: T){
+    self.value = new_val;
+<span class="new">    for observer in &self.observers{
+      (*observer).notify();
+    }</span>
+  }
+}
+</code>
+</pre>
+
+This presents us with a problem: it does not compile! That's because the notify method needs a <b>mutable</b> reference to itself, while the observer is <b>immutable reference</b> inside an <code>Rc</code>.
+We either need access to a mutable variant of Observer, or we need the notify method to not require mutability. The latter can be achieved by wrapping the uniform value inside a <code>Cell</code>.
+That way the uniform can remain externally immutable, while the content of the cell is mutable through the cell's interace; its <code>get</code> and <code>set</code> methods.
+
+<pre>
+<code>
+struct Uniform&lt;T&gt;{
+  handle: i32,
+  value: <span class="new">Cell&lt;T&gt;</span>,
+  observers: Vec&lt;Rc&lt;Observer&gt;&gt;,
+  calculation: Box&lt;Fn() -> T&gt;
+}
+
+impl Observer for Uniform&lt;T&gt;{
+  fn notify(&mut self){
+    let new_value = (self.calculation)();
+    <span class="new">self.set(new_value);</span>
+  }
+}
+
+impl &lt;T&gt; Uniform&lt;T{
+  pub fn set(&self, new_val: T){
+    <span class="new">self.set(new_val);</span>
+    for observer in &self.observers{
+      (*observer).notify();
+    }
+  }
+}
+</code>
+</pre>
+
+There is one more thing we need to do. We need to be able to set either the properties for observers and calculation <b>after</b> the uniforms have been created.
+Because of their interdependencies, we cannot simultaneously constructor inject observers and calculation.
+Also, we are going to write logic so that these uniforms are generated based on the shader program, at which point they do not contain observers or calculation props.
+
+The point is that if we are going to create our uniforms as <code>Rc&lt;Uniform&lt;T&gt;&gt;</code>, we will not be able to set those values anymore.
+We are going to need access to a mutable uniform inside the <code>Rc</code>, which will do using <code>RefCell</code>.
+
+<pre>
+<code>
+struct Uniform&lt;T&gt;{
+  handle: i32,
+  value: Cell&lt;T&gt;,
+  observers: Vec&lt;Rc&lt;RefCell&lt;Observer&gt;&gt;&gt;,
+  calculation: Box&lt;Fn() -> T&gt;
+}
+
+impl Observer for Uniform&lt;f32&gt;{
+  fn notify(&self){
+    let new_value = (self.calculation)();
+    self.value.set(new_value);
+    println!("Setting uniform value to: {}", new_value);
+  }
+
+  fn send_to_opengl(&self){
+    println!("gl::Uniform1f({0}, {1});", self.handle, self.value.get()); // replace by actual gl call
+    for obs in &self.observers {  // Send all observers to opengl as well...
+      let w_u: Rc&lt;RefCell&lt;Observer>> = obs.clone();
+      let u = (*w_u).borrow();
+      u.send_to_opengl();
+    }
+  }
+}
+
+impl&lt;T&gt; Uniform&lt;T&gt;{
+  pub fn set(&self, new_value: T){
+    self.value.set(new_value);    // 1. Set the new value
+    for obs in &self.observers {  // 2. Notify observers
+      let w_u: Rc&lt;RefCell&lt;Observer>> = obs.clone();
+      let u = (*w_u).borrow();
+      u.notify();
+    }
+  }
+
+  pub fn set_observers(&mut self, new_observers: Vec&lt;Rc&lt;RefCell&lt;Observer>>>){
+    self.observers = new_observers;
+  }
+}
+
+impl Uniform&lt;f32&gt;{
+  pub fn new(hanle: i32, value: f32) -> Uniform&lt;f32&gt;{
+    Uniform{
+      handle: hanle,
+      value: Cell::new(value),
+      observers: vec![],
+      calculation: Box::new(|| 0.0)
+    }
+  }
+}
+</code>
+</pre>
+
+</div>
+</body>
+</html>
