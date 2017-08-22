@@ -1,5 +1,6 @@
 mod uniforms;
 use uniforms::*;
+use std::rc::Rc;
 
 // EXAMPLE APPLICATION
 // Consider the following scenario for three instances of Uniform: u1, u2, and u3
@@ -14,51 +15,32 @@ use uniforms::*;
 
 #[cfg(not(test))]
 fn main(){
-  // Create uniforms wrapped in Rc<RefCell<>>
-  let wrapped_u1 = Uniform::new_wrapped(0);
-  let wrapped_u2 = Uniform::new_wrapped(1);
-  let wrapped_u3 = Uniform::new_wrapped(2);
+  let ru1 = {
+    let u1 = Uniform::new(1, 1.0, vec![]);
+    Rc::new(u1)
+  };
+  let ru3 = {
+    let u3 = Uniform::new(3, 1.0, vec![ru1.clone()]);
+    Rc::new(u3)
+  };
+  let ru2 = {
+    let u2 = Uniform::new(2, 1.0, vec![ru1.clone(), ru3.clone()]);
+    Rc::new(u2)
+  };
 
-  // set calculation for u1
-  {
-    // u1 will be (u2+u3)/2
-    let cloned_u2 = wrapped_u2.clone(); // clone uniforms that u1 will depend on.
-    let cloned_u3 = wrapped_u3.clone();
-    // These two closure simply get the uniform value
-    let get_u2_val = move || (*cloned_u2).borrow().value.get(); // give ownership to closures
-    let get_u3_val = move || (*cloned_u3).borrow().value.get();
-    let calc_u1 = move || ( get_u2_val() + get_u3_val() )/2.0; // move getters to calculation
-    let mut borrowed_u1 = (*wrapped_u1).borrow_mut();
-    borrowed_u1.calculation = Box::new( calc_u1 ); // set in mutably borrowed u1
-  }
+  let u1_calc = {
+    let clone_u2 = ru2.clone();
+    let clone_u3 = ru3.clone();
+    Box::new(move || (clone_u2.value.get() + clone_u3.value.get())/2.0)
+  };
+  *ru1.calculation.borrow_mut() = u1_calc;
 
-  // set calculation for u3
-  {
-    // u3 will be u2*3
-    let cloned_u2 = wrapped_u2.clone();
-    let get_u2_val = move || (*cloned_u2).borrow().value.get();
-    let calc_u3 = move || get_u2_val()*3.0;
-    let mut borrowed_u3 = (*wrapped_u3).borrow_mut();
-    borrowed_u3.calculation = Box::new( calc_u3 );
-  }
+  let u3_calc = {
+    let clone_u2 = ru2.clone();
+    Box::new(move || clone_u2.value.get()*3.0)
+  };
+  *ru3.calculation.borrow_mut() = u3_calc;
 
-  // Set observers for u2
-  {
-    let mut borrowed_u2 = (*wrapped_u2).borrow_mut(); // setting observers requires mutable borrow
-    borrowed_u2.set_observers(vec![wrapped_u1.clone(), wrapped_u3.clone()]);
-  }
-
-  // Set observers for u3
-  {
-    let mut borrowed_u3 = (*wrapped_u3).borrow_mut();
-    borrowed_u3.set_observers(vec![wrapped_u1.clone()]);
-  }
-
-  // borrow to call set
-  let borrowed_u2 = (*wrapped_u2).borrow();
-  borrowed_u2.set(7.0);
-  borrowed_u2.send_to_opengl();
-
-  //let borrowed_u1 = (*wrapped_u1).borrow();
-  //borrowed_u1.send_to_opengl();
+  ru2.set(7.0);
+  ru2.send_to_opengl();
 }
