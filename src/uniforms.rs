@@ -58,12 +58,7 @@ impl Observer for Uniform<f32>{
 
 impl Uniform<f32>{
   pub fn new(handle: i32, value: f32) -> Uniform<f32>{
-    Uniform{
-      handle: handle,
-      value: Cell::new(value),
-      observers: vec![],
-      calculation: RefCell::new(Box::new(|| 0.0))
-    }
+    Uniform::with_observers(handle, value, vec![])
   }
 
   pub fn with_observers(handle: i32, value: f32, observers: Vec<Rc<Observer>>) -> Uniform<f32>{
