@@ -1,6 +1,4 @@
 mod uniforms;
-use uniforms::*;
-use std::rc::Rc;
 
 // EXAMPLE APPLICATION
 // Consider the following scenario for three instances of Uniform: u1, u2, and u3
@@ -12,9 +10,12 @@ use std::rc::Rc;
 // u1 depends on u2 and u3    no observers
 // u2 depends on nothing      observers are u1 and u3
 // u3 depends on u2           observer is u1
-
 #[cfg(not(test))]
 fn main(){
+
+  use uniforms::*;
+  use std::rc::Rc;
+
   let ru1 = {
     let u1 = Uniform::new(1, 1.0);
     Rc::new(u1)
