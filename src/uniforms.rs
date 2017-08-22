@@ -57,12 +57,44 @@ impl Observer for Uniform<f32>{
 }
 
 impl Uniform<f32>{
-  pub fn new(hanle: i32, value: f32, observers: Vec<Rc<Observer>>) -> Uniform<f32>{
+  pub fn new(handle: i32, value: f32) -> Uniform<f32>{
     Uniform{
-      handle: hanle,
+      handle: handle,
+      value: Cell::new(value),
+      observers: vec![],
+      calculation: RefCell::new(Box::new(|| 0.0))
+    }
+  }
+
+  pub fn with_observers(handle: i32, value: f32, observers: Vec<Rc<Observer>>) -> Uniform<f32>{
+    Uniform{
+      handle: handle,
       value: Cell::new(value),
       observers: observers,
       calculation: RefCell::new(Box::new(|| 0.0))
     }
+  }
+}
+
+// -- Unit tests --
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn uniform_notifies_observers() {
+    let wrapped_u1 = {
+      let u1 = Uniform::new(1, 1.0);
+      Rc::new(u1)
+    };
+    let wrapped_u2 = {
+      let u2 = Uniform::with_observers(1, 1.0, vec![wrapped_u1.clone()] );
+      Rc::new(u2)
+    };
+    
+    wrapped_u2.set(7.0);
+
+    assert_eq!(wrapped_u2.value.get(), 7.0);
   }
 }

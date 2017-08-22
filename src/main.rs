@@ -16,15 +16,15 @@ use std::rc::Rc;
 #[cfg(not(test))]
 fn main(){
   let ru1 = {
-    let u1 = Uniform::new(1, 1.0, vec![]);
+    let u1 = Uniform::new(1, 1.0);
     Rc::new(u1)
   };
   let ru3 = {
-    let u3 = Uniform::new(3, 1.0, vec![ru1.clone()]);
+    let u3 = Uniform::with_observers(3, 1.0, vec![ru1.clone()]);
     Rc::new(u3)
   };
   let ru2 = {
-    let u2 = Uniform::new(2, 1.0, vec![ru1.clone(), ru3.clone()]);
+    let u2 = Uniform::with_observers(2, 1.0, vec![ru1.clone(), ru3.clone()]);
     Rc::new(u2)
   };
 

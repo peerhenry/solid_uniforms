@@ -1,0 +1,6 @@
+[package]
+name = "solid_uniforms"
+version = "0.1.0"
+authors = ["PeerHenry <peerhenry@gmail.com>"]
+
+[dependencies]
