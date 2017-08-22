@@ -6,11 +6,11 @@ use std::rc::Rc;
 
 pub trait Flushable{
   fn flush_observers(&self);
+  fn send_to_opengl(&self);
 }
 
 pub trait Observer : Flushable{
   fn notify(&self);
-  fn send_to_opengl(&self);
 }
 
 // -- Define structs --
@@ -39,6 +39,11 @@ impl<T> Flushable for Uniform<T>{
       obs.send_to_opengl();
     }
   }
+
+  fn send_to_opengl(&self){
+    //println!("gl::Uniform1f({0}, {1});", self.handle, self.value.get()); // replace by actual gl call
+    self.flush_observers();
+  }
 }
 
 // -- Type specific implementations --
@@ -48,11 +53,6 @@ impl Observer for Uniform<f32>{
     let new_value = (self.calculation.borrow())();
     println!("[NOTIFY] Setting uniform {0} value to: {1}", self.handle, new_value);
     self.set(new_value);
-  }
-
-  fn send_to_opengl(&self){
-    println!("gl::Uniform1f({0}, {1});", self.handle, self.value.get()); // replace by actual gl call
-    self.flush_observers();
   }
 }
 
@@ -79,6 +79,7 @@ mod tests {
 
   #[test]
   fn uniform_notifies_observers() {
+    // Arrange
     let wrapped_u1 = {
       let u1 = Uniform::new(1, 1.0);
       Rc::new(u1)
@@ -87,9 +88,17 @@ mod tests {
       let u2 = Uniform::with_observers(1, 1.0, vec![wrapped_u1.clone()] );
       Rc::new(u2)
     };
+    let u1_calc = {
+      let clone_u2 = wrapped_u2.clone();
+      Box::new(move || clone_u2.value.get()/2.0)
+    };
+    *wrapped_u1.calculation.borrow_mut() = u1_calc;
     
+    // Act
     wrapped_u2.set(7.0);
 
+    // Assert
     assert_eq!(wrapped_u2.value.get(), 7.0);
+    assert_eq!(wrapped_u1.value.get(), 3.5);
   }
 }
