@@ -1,79 +1,57 @@
-use std::cell::Cell;
-use std::cell::RefCell;
-use std::rc::Rc;
+mod uniforms;
+use uniforms::*;
 
-pub trait Observer{
-  fn notify(&self);
-  fn send_to_opengl(&self);
-}
+// EXAMPLE APPLICATION
+// Consider the following scenario for three instances of Uniform: u1, u2, and u3
 
-struct Uniform<T>{
-  handle: i32,
-  value: Cell<T>,
-  observers: Vec<Rc<RefCell<Observer>>>,
-  calculation: Box<Fn() -> T>
-}
+//      u3
+//     /  \
+//   u1 -- u2
 
-impl Observer for Uniform<f32>{
-  fn notify(&self){
-    let new_value = (self.calculation)();
-    self.value.set(new_value);
-    println!("Setting uniform value to: {}", new_value);
-  }
+// u1 depends on u2 and u3    no observers
+// u2 depends on nothing      observers are u1 and u3
+// u3 depends on u2           observer is u1
 
-  fn send_to_opengl(&self){
-    println!("gl::Uniform1f({0}, {1});", self.handle, self.value.get()); // replace by actual gl call
-    for obs in &self.observers {  // Send all observers to opengl as well...
-      let w_u: Rc<RefCell<Observer>> = obs.clone();
-      let u = (*w_u).borrow();
-      u.send_to_opengl();
-    }
-  }
-}
-
-impl<T> Uniform<T>{
-  pub fn set(&self, new_value: T){
-    self.value.set(new_value);    // 1. Set the new value
-    for obs in &self.observers {  // 2. Notify observers
-      let w_u: Rc<RefCell<Observer>> = obs.clone();
-      let u = (*w_u).borrow();
-      u.notify();
-    }
-  }
-
-  pub fn set_observers(&mut self, new_observers: Vec<Rc<RefCell<Observer>>>){
-    self.observers = new_observers;
-  }
-}
-
-impl Uniform<f32>{
-  pub fn new(hanle: i32, value: f32) -> Uniform<f32>{
-    Uniform{
-      handle: hanle,
-      value: Cell::new(value),
-      observers: vec![],
-      calculation: Box::new(|| 0.0)
-    }
-  }
-}
-
+#[cfg(not(test))]
 fn main(){
-  let u1 = Uniform::<f32>::new(0, 1.0);
-  let wrapped_u1 = Rc::new(RefCell::new(u1)); // move it to an Rc
-  let u2 = Uniform::<f32>::new(0, 1.0);
-  let wrapped_u2 = Rc::new(RefCell::new(u2)); // move it to an Rc
+  // Create uniforms wrapped in Rc<RefCell<>>
+  let wrapped_u1 = Uniform::new_wrapped(0);
+  let wrapped_u2 = Uniform::new_wrapped(1);
+  let wrapped_u3 = Uniform::new_wrapped(2);
 
+  // set calculation for u1
   {
-    let cloned_u2 = wrapped_u2.clone();
-    // Need to borrow mutably to set calculation in uniform 1
+    // u1 will be (u2+u3)/2
+    let cloned_u2 = wrapped_u2.clone(); // clone uniforms that u1 will depend on.
+    let cloned_u3 = wrapped_u3.clone();
+    // These two closure simply get the uniform value
+    let get_u2_val = move || (*cloned_u2).borrow().value.get(); // give ownership to closures
+    let get_u3_val = move || (*cloned_u3).borrow().value.get();
+    let calc_u1 = move || ( get_u2_val() + get_u3_val() )/2.0; // move getters to calculation
     let mut borrowed_u1 = (*wrapped_u1).borrow_mut();
-    borrowed_u1.calculation = Box::new(move || (*cloned_u2).borrow().value.get()/2.0 ); // the closure becomes owner of the cloned uniform 2
+    borrowed_u1.calculation = Box::new( calc_u1 ); // set in mutably borrowed u1
   }
 
+  // set calculation for u3
   {
-    // Need to borrow mutably to set observers in uniform 2
-    let mut borrowed_u2 = (*wrapped_u2).borrow_mut();
-    borrowed_u2.set_observers(vec![wrapped_u1.clone()]);
+    // u3 will be u2*3
+    let cloned_u2 = wrapped_u2.clone();
+    let get_u2_val = move || (*cloned_u2).borrow().value.get();
+    let calc_u3 = move || get_u2_val()*3.0;
+    let mut borrowed_u3 = (*wrapped_u3).borrow_mut();
+    borrowed_u3.calculation = Box::new( calc_u3 );
+  }
+
+  // Set observers for u2
+  {
+    let mut borrowed_u2 = (*wrapped_u2).borrow_mut(); // setting observers requires mutable borrow
+    borrowed_u2.set_observers(vec![wrapped_u1.clone(), wrapped_u3.clone()]);
+  }
+
+  // Set observers for u3
+  {
+    let mut borrowed_u3 = (*wrapped_u3).borrow_mut();
+    borrowed_u3.set_observers(vec![wrapped_u1.clone()]);
   }
 
   // borrow to call set
@@ -81,6 +59,6 @@ fn main(){
   borrowed_u2.set(7.0);
   borrowed_u2.send_to_opengl();
 
-  let borrowed_u1 = (*wrapped_u1).borrow();
-  borrowed_u1.send_to_opengl();
+  //let borrowed_u1 = (*wrapped_u1).borrow();
+  //borrowed_u1.send_to_opengl();
 }
