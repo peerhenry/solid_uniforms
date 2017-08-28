@@ -1,6 +1,8 @@
 [package]
-name = "solid_uniforms"
+name = "uniforms"
 version = "0.1.0"
 authors = ["PeerHenry <peerhenry@gmail.com>"]
 
 [dependencies]
+cgmath = "0.15.0"
+gl = "*"
