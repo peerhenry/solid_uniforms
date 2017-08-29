@@ -34,14 +34,14 @@ pub trait UniformObservable {
 // -- Define types --
 
 // The observers of the uniforms need to be inside an Rc (Reference counter), which allows multiple ownership.
-type ObserverCollection = Vec<Rc<UniformObserver>>;
+pub type ObserverCollection = Vec<Rc<UniformObserver>>;
 
 // GlSenderType is an Option because None is for partial uniforms (partial uniforms don't correspond 1-to-1 to uniforms on the shader)
 // The SendBehavior is in a Box because its size is not known at compile time.
-type GlSenderType<T> = Option<Box<GlSendBehavior<T>>>;
+pub type GlSenderType<T> = Option<Box<GlSendBehavior<T>>>;
 
 // In a RefCell to allow internal mutability. Functions just need to be inside a Box.
-type CalculationType<T> = RefCell<Box<Fn() -> T>>;
+pub type CalculationType<T> = RefCell<Box<Fn() -> T>>;
 
 // -- Define structs --
 
