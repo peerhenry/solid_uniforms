@@ -1,14 +1,14 @@
 use std::marker::PhantomData;
 use gl;
 use gl::types::{GLint, GLfloat};
-use uniform::GlSendBehavior;
+use traits::GlSendBehavior;
 use cgmath::{Matrix, Matrix3, Matrix4};
 
 // -- OpenGL Send Behavior --
 
 pub struct GlSender<T>{
   pub handle: GLint,
-  phantom: PhantomData<T> // marker to allow the struct to be generic
+  pub phantom: PhantomData<T> // marker to allow the struct to be generic
 }
 
 #[allow(non_camel_case_types)]
@@ -21,6 +21,8 @@ impl<T> GlSender<T>{
   }
 }
 
+// Send behavior for various types
+
 #[allow(unused_variables, non_camel_case_types)]
 impl GlSendBehavior<GLfloat> for GlSender<GLfloat>{
   fn send_to_opengl(&self, value: GLfloat){
@@ -31,10 +33,19 @@ impl GlSendBehavior<GLfloat> for GlSender<GLfloat>{
 }
 
 #[allow(unused_variables, non_camel_case_types)]
+impl GlSendBehavior<GLint> for GlSender<GLfloat>{
+  fn send_to_opengl(&self, value: GLint){
+    unsafe{ 
+      gl::Uniform1i(self.handle, value);
+    }
+  }
+}
+
+#[allow(unused_variables, non_camel_case_types)]
 impl GlSendBehavior<Matrix3<GLfloat>> for GlSender<Matrix3<GLfloat>>{
   fn send_to_opengl(&self, value: Matrix3<GLfloat>){
     unsafe{
-      gl::UniformMatrix4fv(self.handle, 1, gl::FALSE, value.as_ptr());
+      gl::UniformMatrix3fv(self.handle, 1, gl::FALSE, value.as_ptr());
     }
   }
 }

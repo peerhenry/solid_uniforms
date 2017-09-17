@@ -1,10 +1,30 @@
 extern crate uniforms;
-use uniforms::uniform::Uniform;
-use uniforms::uniform::UniformObserver;
-use uniforms::uniform::GlSendBehavior;
-use uniforms::gl_sender::GlSender;
+use std::marker::PhantomData;
 extern crate gl;
 use gl::types::*;
+use uniforms::uniform::Uniform;
+use uniforms::traits::{UniformObserver, GlSendBehavior};
+use uniforms::gl_sender::GlSender;
+
+pub struct MockGlSender<T>{
+  phantom: PhantomData<T>
+}
+
+impl<T> MockGlSender<T>{
+  pub fn new(handle: GLint) -> GlSender<T>{
+    GlSender::<T>{
+      handle: handle,
+      phantom: PhantomData
+    }
+  }
+}
+
+#[allow(unused_variables, non_camel_case_types)]
+impl GlSendBehavior<GLfloat> for MockGlSender<GLfloat>{
+  fn send_to_opengl(&self, value: GLfloat){
+    // do nothing
+  }
+}
 
 // EXAMPLE APPLICATION
 // Consider the following scenario for three instances of Uniform: u1, u2, and u3
@@ -25,7 +45,7 @@ fn main(){
   println!("u2 = u3*3");
 
   fn create_uniform(handle: i32, observers: Vec<Rc<UniformObserver>>) -> Rc<Uniform<f32>>{
-    let sender = GlSender::<GLfloat>::new(handle);
+    let sender = MockGlSender::<GLfloat>::new(handle);
     let boxed_sender = Box::new(sender) as Box<GlSendBehavior<GLfloat>>;
     let uniform = Uniform::<GLfloat>::new( 1.0, observers, Box::new(|| 1.0), Some(boxed_sender));
     Rc::new(uniform)

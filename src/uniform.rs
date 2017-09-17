@@ -1,47 +1,9 @@
 use std::cell::Cell;
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::marker::Copy;
 
-// -- Define traits --
-
-#[allow(unused_variables)]
-pub trait GlSendBehavior<T>{
-  fn send_to_opengl(&self, data: T){
-    // default behavior: do nothing
-  }
-}
-
-pub trait UniformObserver {
-  fn notify(&self);
-  fn send_to_opengl(&self);
-}
-
-pub trait UniformObservable {
-  fn get_observers(&self) -> &ObserverCollection;
-  fn notify_observers(&self) {
-    for obs in self.get_observers() {
-      obs.notify();
-    }
-  }
-  fn send_observers_to_opengl(&self) {
-    for obs in self.get_observers() {
-      obs.send_to_opengl();
-    }
-  }
-}
-
-// -- Define types --
-
-// The observers of the uniforms need to be inside an Rc (Reference counter), which allows multiple ownership.
-pub type ObserverCollection = Vec<Rc<UniformObserver>>;
-
-// GlSenderType is an Option because None is for partial uniforms (partial uniforms don't correspond 1-to-1 to uniforms on the shader)
-// The SendBehavior is in a Box because its size is not known at compile time.
-pub type GlSenderType<T> = Option<Box<GlSendBehavior<T>>>;
-
-// In a RefCell to allow internal mutability. Functions just need to be inside a Box.
-pub type CalculationType<T> = RefCell<Box<Fn() -> T>>;
+use traits::*;
+use types::*;
 
 // -- Define structs --
 
@@ -80,20 +42,12 @@ impl<T> Uniform<T> where T: Copy{
   }
 }
 
-// -- Implementation of trait --
+// -- Implementation of traits --
 
 impl<T> UniformObserver for Uniform<T> where T: Copy{
   fn notify(&self){
     let new_value = (*self.calculation.borrow())();
     self.set(new_value);
-    // let calc_option: Option<_> = self.calculation.into_inner();//.borrow();
-    // match self.calculation {
-    //   Some(calc) => {
-    //     let new_value = (calc.borrow())();
-    //     self.set(new_value);
-    //   },
-    //   None => println!("WARNING! Uniform was notified while not having a calculation!!!")
-    // }
   }
 
   fn send_to_opengl(&self){
@@ -112,12 +66,17 @@ impl<T> UniformObservable for Uniform<T>{
   }
 }
 
+
+// -----------
 // -- TESTS --
+// -----------
+
 
 #[cfg(test)]
-mod uniform_tests{
+mod tests{
 
   use super::*;
+  use std::rc::Rc;
 
   // Note: we need to wrap uniforms in Rc in order to get multiple ownership.
   // This is because they need to be accessable through:
